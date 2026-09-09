@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "pii-redaction-engine test shell",
+  "version": "0.1.0",
+  "description": "Minimal unpacked extension. Verifies the parts of MV3 integration that are genuinely new risk: dynamic import() of the local engine module from a content script's isolated world, DOM-layer detection on a real page, and fetch() of a remote HF model URL under host_permissions. Does NOT re-run full onnxruntime-web/tesseract.js inference here (that's proven in demo/) — see README for why, and for the bundling requirement those libraries need for production.",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/*", "src/layers/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

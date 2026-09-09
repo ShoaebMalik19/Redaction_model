@@ -1,0 +1,14 @@
+{
+  "name": "pii-redaction-engine",
+  "version": "0.1.0",
+  "description": "On-device redaction pipeline for browser agents: DOM field check, PII vision model, face detector, and OCR+regex safety net (Aadhaar/phone/password/name). Built for SIH26171.",
+  "type": "module",
+  "main": "src/redaction-engine.js",
+  "exports": {
+    ".": "./src/redaction-engine.js"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}

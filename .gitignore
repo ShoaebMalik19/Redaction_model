@@ -1,0 +1,6 @@
+# Model weights are fetched at runtime from Hugging Face — never commit them.
+test-images/*.onnx
+*.onnx
+
+node_modules/
+.DS_Store
