@@ -69,20 +69,18 @@ export class RedactionEngine {
     return detectDomFields(root);
   }
 
-  /** Draw labeled, dimmed redaction boxes (not solid black) onto a canvas 2D context. */
+  /** Draw solid black redaction boxes with a bold white category label (e.g.
+   * "[PASSWORD]") on top — hides the value while still showing what was redacted. */
   redactCanvas(ctx, regions) {
     for (const d of regions) {
       const boxW = d.x2 - d.x1, boxH = d.y2 - d.y1;
-      ctx.fillStyle = 'rgba(226,232,240,0.94)';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(d.x1, d.y1, boxW, boxH);
-      ctx.strokeStyle = 'rgba(100,116,139,0.7)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(d.x1, d.y1, boxW, boxH);
 
       const text = bracketLabel(d.label);
       const fontSize = fitFontSize(ctx, text, boxW, Math.max(10, Math.min(16, boxH * 0.5)), 8);
       ctx.font = `bold ${fontSize}px sans-serif`;
-      ctx.fillStyle = '#334155';
+      ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(text, d.x1 + boxW / 2, d.y1 + boxH / 2);
@@ -101,9 +99,9 @@ export class RedactionEngine {
       div.style.cssText = `
         position: fixed; left: ${d.x1}px; top: ${d.y1}px;
         width: ${d.x2 - d.x1}px; height: ${d.y2 - d.y1}px;
-        background: rgba(226,232,240,0.94); border: 1px solid rgba(100,116,139,0.6);
+        background: #000000;
         display: flex; align-items: center; justify-content: center; overflow: hidden;
-        color: #334155; font-weight: bold; font-size: ${Math.max(9, Math.min(12, (d.y2 - d.y1) * 0.4))}px;
+        color: #ffffff; font-weight: bold; font-size: ${Math.max(9, Math.min(12, (d.y2 - d.y1) * 0.4))}px;
         letter-spacing: 0.5px; pointer-events: none; z-index: 2147483647; box-sizing: border-box;
       `;
       container.appendChild(div);
