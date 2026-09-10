@@ -15,6 +15,22 @@ const DOM_SELECTORS = [
   // id="username", no autocomplete): match on id/name substrings directly.
   { sel: 'input[id*="user" i], input[name*="user" i]', label: 'username-field' },
   { sel: 'input[id*="mobile" i], input[name*="mobile" i]', label: 'phone-field' },
+  // Real person-name fields, found via the actual HTML living-standard autocomplete
+  // tokens first, with common id-substring naming conventions as a backstop for
+  // forms (like a real government registration form found in testing) that don't
+  // set autocomplete at all.
+  { sel: 'input[autocomplete="name"], input[autocomplete*="given-name"], input[autocomplete*="family-name"]', label: 'name-field' },
+  { sel: 'input[id*="fname" i], input[id*="lname" i], input[id*="fullname" i], input[id*="firstname" i], input[id*="lastname" i]', label: 'name-field' },
+  // Home/postal address — textareas aren't covered by any selector above at all.
+  { sel: 'textarea[id*="address" i], textarea[name*="address" i], textarea[autocomplete*="address"]', label: 'address-field' },
+];
+
+// Value-shape patterns, checked against any text input's live value — catches
+// government-ID-style fields (Aadhaar, PAN) regardless of what the field is
+// named, the same way the OCR layer's regex safety net works on image text.
+const VALUE_PATTERNS = [
+  { re: /^\d{4}\s?\d{4}\s?\d{4}$/, label: 'aadhaar-field' },
+  { re: /^[A-Z]{5}\d{4}[A-Z]$/, label: 'pan-field' },
 ];
 
 function addField(found, seen, el, label) {
@@ -38,6 +54,16 @@ export function detectDomFields(root = document) {
   for (const { sel, label } of DOM_SELECTORS) {
     root.querySelectorAll(sel).forEach((el) => addField(found, seen, el, label));
   }
+
+  // Value-shape check: any text input whose current value looks like an Aadhaar
+  // or PAN number, independent of field naming.
+  root.querySelectorAll('input[type="text"], input:not([type])').forEach((el) => {
+    if (seen.has(el)) return;
+    const val = el.value.trim();
+    for (const { re, label } of VALUE_PATTERNS) {
+      if (re.test(val)) { addField(found, seen, el, label); break; }
+    }
+  });
 
   // Robust fallback independent of any naming convention: the identifier field
   // (mobile number / user ID / email) is almost always the text input immediately
