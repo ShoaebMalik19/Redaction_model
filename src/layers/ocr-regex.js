@@ -68,10 +68,42 @@ function boxFromWords(words, scale) {
   };
 }
 
+/** Build page-coordinate rects for real text-entry fields (not password — that's
+ * handled separately by the DOM layer / password-value regex). Used to confirm a
+ * name-pattern candidate actually sits inside a value a user typed, not a label,
+ * heading, or nav link — see the false-positive note below findNameRuns(). */
+function getFieldRects(domRoot) {
+  if (!domRoot) return null;
+  const els = domRoot.querySelectorAll(
+    'input:not([type=password]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]), textarea'
+  );
+  return Array.from(els).map((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      left: r.left + window.scrollX, top: r.top + window.scrollY,
+      right: r.right + window.scrollX, bottom: r.bottom + window.scrollY,
+    };
+  });
+}
+function overlapsAnyField(fieldRects, x0, y0, x1, y1) {
+  return fieldRects.some((f) => !(x1 < f.left || x0 > f.right || y1 < f.top || y0 > f.bottom));
+}
+
 /** Find runs of 2+ consecutive Title-Case, non-stopword words on a line — the
  * name-detection heuristic. Zero added model weight; extends the same
- * pattern-matching approach already used for Aadhaar/phone/password. */
-function findNameRuns(words) {
+ * pattern-matching approach already used for Aadhaar/phone/password.
+ *
+ * IMPORTANT: tested against a real website (not just a document photo) and found
+ * to badly over-fire on ordinary UI text — nav links ("New Registration"), page
+ * headings ("Citizen Registration Form"), even a field's own label ("Full Name")
+ * are all Title-Case 2+ word phrases. On a real registration page this produced
+ * 22 candidate hits for a single actual name. When `fieldRects` is provided
+ * (i.e. detectViaOcr was told about the live DOM the image was captured from),
+ * candidates are required to overlap an actual input/textarea's position —
+ * cutting that page's false positives from 22 to 2. Without `fieldRects` (e.g.
+ * testing on an unrelated uploaded image, where DOM coordinates wouldn't
+ * correspond to anything), falls back to the stopword-only filter. */
+function findNameRuns(words, fieldRects, scale) {
   const runs = [];
   let current = [];
   for (const w of words) {
@@ -85,11 +117,19 @@ function findNameRuns(words) {
     }
   }
   if (current.length >= 2) runs.push(current);
-  return runs;
+
+  if (!fieldRects) return runs;
+  return runs.filter((run) => {
+    const x0 = Math.min(...run.map((w) => w.bbox.x0)) / scale;
+    const y0 = Math.min(...run.map((w) => w.bbox.y0)) / scale;
+    const x1 = Math.max(...run.map((w) => w.bbox.x1)) / scale;
+    const y1 = Math.max(...run.map((w) => w.bbox.y1)) / scale;
+    return overlapsAnyField(fieldRects, x0, y0, x1, y1);
+  });
 }
 
 /** Run all pattern checks against one OCR pass's native lines. */
-function extractLineHits(lines, scale) {
+function extractLineHits(lines, scale, fieldRects) {
   const results = [];
   for (const line of lines) {
     const words = (line.words || []).map((w) => ({ text: w.text, bbox: w.bbox }));
@@ -121,7 +161,7 @@ function extractLineHits(lines, scale) {
     }
 
     if (!hitAadhaarOrPhone) {
-      for (const run of findNameRuns(words)) {
+      for (const run of findNameRuns(words, fieldRects, scale)) {
         results.push({ source: 'regex', label: 'name-pattern', score: 0.8, ...boxFromWords(run, scale) });
       }
     }
@@ -129,9 +169,18 @@ function extractLineHits(lines, scale) {
   return results;
 }
 
-export async function detectViaOcr(Tesseract, img) {
+/**
+ * @param {object} [opts]
+ * @param {Document|Element} [opts.domRoot] - pass the live document when `img` is a
+ *   capture of the CURRENT page (e.g. a content script screenshotting its own tab).
+ *   Enables DOM cross-referencing that sharply cuts name-heuristic false positives
+ *   on real sites (see findNameRuns() above). Omit when `img` is an unrelated
+ *   image (upload, different page) — DOM coordinates wouldn't correspond to it.
+ */
+export async function detectViaOcr(Tesseract, img, opts = {}) {
   const t0 = performance.now();
   const { canvas: preCanvas, scale } = preprocessForOCR(img);
+  const fieldRects = getFieldRects(opts.domRoot);
 
   const [resHin, resEng] = await Promise.all([
     Tesseract.recognize(preCanvas, 'eng+hin'),
@@ -139,8 +188,8 @@ export async function detectViaOcr(Tesseract, img) {
   ]);
 
   const results = [
-    ...extractLineHits(resEng.data.lines || [], scale),
-    ...extractLineHits(resHin.data.lines || [], scale),
+    ...extractLineHits(resEng.data.lines || [], scale, fieldRects),
+    ...extractLineHits(resHin.data.lines || [], scale, fieldRects),
   ];
 
   const time = performance.now() - t0;

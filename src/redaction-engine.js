@@ -45,8 +45,14 @@ export class RedactionEngine {
   }
 
   /** Layers 1-3 (vision PII model, face detector, OCR+regex safety net) on a
-   * screenshot/image. Run engine.detectDom() separately for the DOM layer. */
-  async detect(img) {
+   * screenshot/image. Run engine.detectDom() separately for the DOM layer.
+   * @param {object} [opts]
+   * @param {Document|Element} [opts.domRoot] - pass `document` when `img` is a
+   *   capture of the current page — sharply cuts name-heuristic false positives
+   *   on real sites (nav links, headings, field labels) by requiring a candidate
+   *   name to actually sit inside a real input/textarea. Omit for an unrelated
+   *   image (upload, different page). See src/layers/ocr-regex.js for details. */
+  async detect(img, opts = {}) {
     if (!this.piiSession || !this.faceSession) {
       throw new Error('RedactionEngine.init() must be called and awaited before detect()');
     }
@@ -54,7 +60,7 @@ export class RedactionEngine {
     // onnxruntime-web's WebGPU backend throws "Session already started" if two
     // sessions try to run concurrently on the same GPU context. OCR uses a
     // separate engine (Tesseract/WASM) so it's safe to run alongside both.
-    const ocrPromise = detectViaOcr(this.Tesseract, img);
+    const ocrPromise = detectViaOcr(this.Tesseract, img, { domRoot: opts.domRoot });
     const pii = await detectPii(this.ort, this.piiSession, img);
     const face = await detectFaces(this.ort, this.faceSession, img);
     const ocr = await ocrPromise;
