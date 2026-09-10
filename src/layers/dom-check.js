@@ -7,6 +7,8 @@ const DOM_SELECTORS = [
   { sel: 'input[autocomplete*="username"]', label: 'username-field' },
   { sel: 'input[autocomplete*="email"]', label: 'email-field' },
   { sel: 'input[type="email"]', label: 'email-field' },
+  { sel: 'input[type="tel"]', label: 'phone-field' },
+  { sel: 'input[autocomplete*="tel"]', label: 'phone-field' },
   { sel: 'input[autocomplete*="cc-number"]', label: 'card-number-field' },
   // Backstop for real-world forms with no autocomplete attribute at all (common —
   // found on a real government login form where the identifier field had only
