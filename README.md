@@ -1,28 +1,77 @@
-# pii-redaction-engine
+<div align="center">
 
-On-device redaction pipeline built for **SIH26171** (ISRO — On-device Visual Perception for
-Lightweight Browser Agents). Detects and redacts sensitive on-screen content (faces,
-passwords, Aadhaar-style numbers, phone numbers, names) entirely client-side — nothing is
-ever sent to a server. This is the **privacy filter layer** that sits *before* the agent's
-cloud LLM/VLM call: capture screen → run this engine → send only the sanitized output onward.
+# PII Redaction Engine
 
-## Architecture — 4 layers
+**On-device privacy filter for browser agents: finds and redacts faces, passwords, IDs, phone numbers and names before a screenshot ever leaves the browser.**
 
-| Layer | What | Speed | Notes |
-|---|---|---|---|
-| 0. DOM check | `input[type=password]`, username/email/card fields | instant, 0ms | Ground truth — no model involved. Only works on a live page, not a flat image. |
-| 1. PII vision model | Text-based PII regions in a screenshot | ~0.2-0.8s | [screenpipe/pii-image-redactor](https://huggingface.co/screenpipe/pii-image-redactor) (rfdetr, ONNX, ~57MB). **CC BY-NC 4.0 — non-commercial only.** |
-| 2. Face detector | Faces | ~0.1-0.6s | [SCRFD-500m](https://huggingface.co/RuteNL/SCRFD-face-detection-ONNX) (ONNX, 2.3MB, Apache-2.0). |
-| 3. OCR + regex safety net | Aadhaar-style numbers, phone numbers, password field values, proper names | ~2-10s | Tesseract.js (`eng` + `eng+hin` in parallel) + pattern matching. Catches what the vision models miss on clean documents/forms. |
+[![JavaScript](https://img.shields.io/badge/JavaScript_ESM-1a1a1a?style=for-the-badge&logo=javascript&logoColor=F7DF1E)](https://developer.mozilla.org/docs/Web/JavaScript)
+[![ONNX Runtime Web](https://img.shields.io/badge/ONNX_Runtime_Web-1f2937?style=for-the-badge&logo=onnx&logoColor=white)](https://onnxruntime.ai)
+[![Tesseract.js](https://img.shields.io/badge/Tesseract.js_OCR-1e293b?style=for-the-badge&logo=googlelens&logoColor=white)](https://tesseract.projectnaptha.com)
+[![Hugging Face](https://img.shields.io/badge/Hugging_Face_Models-1a1a1a?style=for-the-badge&logo=huggingface&logoColor=FFD21E)](https://huggingface.co)
+[![Chrome MV3](https://img.shields.io/badge/Chrome_Extension_MV3-202124?style=for-the-badge&logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3)
+[![SIH](https://img.shields.io/badge/SIH-SIH26171-0b3d2e?style=for-the-badge)](#-overview)
 
-All 4 layers run independently and their results are simply unioned — duplicate/overlapping
-boxes across layers are expected and harmless (same region gets redacted twice, which looks
-identical to once).
+</div>
 
-## Install / usage
+---
 
-No build step. Pass in `onnxruntime-web` and `tesseract.js` as already-loaded globals (via
-`<script>` tag or your own bundler) — the engine doesn't bundle or fetch them itself.
+## ✨ Overview
+
+Built for **SIH26171** (ISRO: On-device Visual Perception for Lightweight Browser Agents). This is the **privacy filter layer** that sits *before* an agent's cloud LLM/VLM call:
+
+```
+capture screen → run this engine → send only the sanitized output onward
+```
+
+Everything runs client-side. Nothing is sent to a server; only the model weights are fetched (from Hugging Face) on first use.
+
+## 🚀 Features
+
+- **Four independent detection layers** whose results are unioned (overlapping boxes are harmless):
+
+  | Layer | What | Speed | Notes |
+  | --- | --- | --- | --- |
+  | 0. DOM check | `input[type=password]`, username/email/card fields | instant | Ground truth, no model. Works on a live page, not a flat image. |
+  | 1. PII vision model | Text-based PII regions in a screenshot | ~0.2-0.8s | [screenpipe/pii-image-redactor](https://huggingface.co/screenpipe/pii-image-redactor) (RF-DETR, ONNX, ~57MB). **CC BY-NC 4.0, non-commercial only.** |
+  | 2. Face detector | Faces | ~0.1-0.6s | [SCRFD-500m](https://huggingface.co/RuteNL/SCRFD-face-detection-ONNX) (ONNX, 2.3MB, Apache-2.0) |
+  | 3. OCR + regex safety net | Aadhaar-style numbers, phone numbers, password values, proper names | ~2-10s | Tesseract.js (`eng` and `eng+hin` in parallel) plus pattern matching |
+
+- **Labeled redaction:** dimmed boxes tagged with what was removed (for example `[NAME]`) instead of solid black.
+- **Canvas or live-DOM output:** redact a screenshot on a canvas, or overlay directly on page elements.
+- **Context-aware name detection:** pass `domRoot: document` when the image is a capture of the current page to cut false positives from nav links and headings.
+- **No build step:** plain ES modules; bring your own `onnxruntime-web` and `tesseract.js`.
+
+## 🧱 Tech Stack
+
+- **Runtime:** browser, plain ES modules
+- **Inference:** `onnxruntime-web` running RF-DETR (PII) and SCRFD (faces)
+- **OCR:** `tesseract.js` (English + Hindi)
+- **Integration target:** Chrome Manifest V3 content scripts
+- **Dev server:** a tiny Python static server that sends COOP/COEP headers
+
+## 🗂️ Project Structure
+
+```
+.
+├── src/
+│   ├── redaction-engine.js   # Public API: RedactionEngine
+│   ├── labels.js             # Redaction label text and sizing
+│   └── layers/
+│       ├── dom-check.js      # Layer 0: sensitive form fields
+│       ├── pii-vision.js     # Layer 1: PII vision model
+│       ├── face-detect.js    # Layer 2: SCRFD face detector
+│       └── ocr-regex.js      # Layer 3: OCR + regex safety net
+├── demo/index.html           # Interactive test page using the real module
+├── extension-test/           # Minimal unpacked MV3 extension harness
+├── test-images/              # Sample form, face grid, chat screenshot, ID sample
+└── server.py                 # Static server with COOP/COEP headers (port 8903)
+```
+
+## ⚡ Getting Started
+
+### Use the engine
+
+Load `onnxruntime-web` and `tesseract.js` yourself (script tag or bundler) and pass them in; the engine does not bundle or fetch them.
 
 ```js
 import { RedactionEngine, bracketLabel } from './src/redaction-engine.js';
@@ -36,71 +85,56 @@ const { regions, timings } = await engine.detect(imageOrCanvas);
 // Layer 0, on the live page (sync, instant):
 const domRegions = engine.detectDom(document);
 
-// Draw labeled, dimmed redaction boxes (not solid black — shows what was redacted, e.g. "[NAME]")
+// Draw labeled, dimmed redaction boxes
 engine.redactCanvas(canvasCtx, [...regions, ...domRegions]);
 
 // Or overlay directly on live DOM elements:
 engine.redactDomOverlay(domRegions);
 ```
 
-Model weights are **not** committed to this repo — they're fetched at runtime from Hugging
-Face on first `init()`. See `src/redaction-engine.js` `DEFAULT_MODEL_URLS` to override with
-a locally-hosted copy.
+Model weights are **not** committed. To self-host them, override `modelUrls` (see `DEFAULT_MODEL_URLS` in `src/redaction-engine.js`):
 
-## Demo
+```js
+new RedactionEngine({ ort, Tesseract, modelUrls: { pii: '/models/pii.onnx', face: '/models/face.onnx' } });
+```
 
-`demo/index.html` — a working test page using the actual published module (not a copy). Serve
-the repo root with any static file server that sends
-`Cross-Origin-Opener-Policy: same-origin` / `Cross-Origin-Embedder-Policy: require-corp`
-(see `server.py`) and open `demo/index.html`. Buttons load real test cases (a registration
-form, a face grid, a chat screenshot, a real Aadhaar sample) — none of the sample images are
-of real identifiable people except the Aadhaar sample, which is a widely-circulated public
-sample ID used for OCR-testing tutorials, not a private document.
+### Run the demo
 
-## MV3 / browser-extension integration notes
+The demo needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. `server.py` sends both:
 
-Read this before wiring `src/` into a content script — these are real constraints, not
-assumptions:
+```bash
+python server.py
+# open http://localhost:8903/demo/index.html
+```
 
-- **CSP**: MV3's `content_security_policy.extension_pages` cannot be relaxed to allow remote
-  `<script src="https://...">` tags (`script-src` is locked to `'self'` for extension pages
-  under Chrome's remote-code policy). **onnxruntime-web and tesseract.js must be bundled as
-  local extension files**, not loaded from a CDN — that works fine on a plain webpage (as the
-  demo does) but will not work the same way inside an extension's own page. A content script
-  running in a target *webpage's* context follows that page's CSP instead, which is
-  inconsistent across sites — bundling locally sidesteps this entirely.
-- **Fetching model weights** (the `.onnx` binary files) from Hugging Face at runtime via
-  `fetch()` is fine under MV3 — that's data, not executable code, and is unaffected by the
-  restriction above. Requires `host_permissions` covering the Hugging Face domain (or wherever
-  you choose to host the weights).
-- **Local module loading**: dynamic `import()` of the engine's own JS files from
-  `chrome.runtime.getURL(...)` works from a content script's isolated world — verified via
-  `extension-test/`.
-- **Tesseract.js Web Workers**: not yet verified running inside an actual extension content
-  script (only verified on a plain webpage). Test this specifically before shipping — worker
-  script loading from a `chrome-extension://` origin is the one piece of this pipeline that
-  hasn't been confirmed working in a real extension context yet.
-- `extension-test/` contains a minimal unpacked-extension harness that verifies the two
-  genuinely new risk items (local module import + remote model fetch) without re-running the
-  full AI pipeline inside the extension shell — that's already proven in `demo/`. Load it via
-  `chrome://extensions` → Developer mode → Load unpacked → select `extension-test/`.
+The demo buttons load the test cases in [`test-images/`](test-images): a registration form, a face grid, a chat screenshot and a widely circulated public Aadhaar sample used in OCR tutorials.
 
-## Known limitations
+### Load the extension harness
 
-- **Names in Devanagari (or other non-Latin) script are not covered** by the name-detection
-  heuristic — it only matches Title-Case Latin-script word patterns (e.g. catches "Bhushan
-  Diwakar" but not "भूषण दिवाकर" on the same card).
-- **The name heuristic is pattern-based, not a trained model** — on images with little or no
-  real text (e.g. a photo with visual noise/texture and nothing to actually read), Tesseract
-  can occasionally hallucinate plausible-looking capitalized text fragments, producing a false
-  positive. Not expected to be a meaningful problem on real screens/documents, which have
-  substantial genuine UI text that dominates over any incidental noise.
-- **PII vision model category labels aren't always accurate** even when the *region* is
-  correctly located (e.g. may label an Aadhaar number as "phone" instead of "id") — if your
-  redaction logic blacks out any detected region regardless of label, this doesn't matter; if
-  you display the category to the user, expect occasional mislabeling.
-- **screenpipe/pii-image-redactor's license is CC BY-NC 4.0** (non-commercial). Fine for a
-  hackathon; contact the model author before any commercial deployment.
-- Total detect() time (0.5-10s depending on image size, dominated by the OCR layer) is not
-  "instant" — plan the extension's UX around a brief redaction delay, not a synchronous
-  screen-capture-to-redacted-image step.
+`chrome://extensions` → Developer mode → **Load unpacked** → select `extension-test/`. It verifies local module `import()` from a content script and remote model fetch under `host_permissions`, without re-running the full AI pipeline.
+
+## 🧩 MV3 Integration Notes
+
+- **CSP:** MV3 extension pages cannot load remote scripts, so **`onnxruntime-web` and `tesseract.js` must be bundled as local extension files** rather than loaded from a CDN.
+- **Model weights:** fetching `.onnx` files at runtime is fine under MV3 (data, not code). It needs `host_permissions` for wherever the weights are hosted.
+- **Local module loading:** dynamic `import()` of the engine from `chrome.runtime.getURL(...)` works from a content script's isolated world (verified via `extension-test/`).
+- **Tesseract.js workers:** verified on a plain webpage, **not yet verified** inside an extension content script. Test this before shipping.
+
+## ⚠️ Known Limitations
+
+- Names in Devanagari or other non-Latin scripts are not covered by the name heuristic (Title-Case Latin only).
+- The name heuristic is pattern-based, so OCR on texture-heavy images with little real text can occasionally produce false positives.
+- The PII vision model sometimes mislabels the category (for example an Aadhaar number as "phone") even when the region is correct.
+- `screenpipe/pii-image-redactor` is **CC BY-NC 4.0**: contact the model author before any commercial use.
+- Total `detect()` time is roughly 0.5-10s depending on image size, dominated by OCR, so plan the UX around a short redaction delay.
+
+## 🛣️ Roadmap
+
+- Bundle `onnxruntime-web` and `tesseract.js` into the extension and verify Tesseract workers inside a content script.
+- Extend name detection to non-Latin scripts.
+
+## 👤 Author
+
+**Mohammed Shoaeb Malik** · AI & Full-Stack Developer, Bengaluru
+
+[![GitHub](https://img.shields.io/badge/GitHub-ShoaebMalik19-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ShoaebMalik19)
